@@ -1,0 +1,133 @@
+//*******************************************************************************************************************************************
+// Universidad del Valle de Guatemala
+// IE2023 Programación de Microcontroladores
+// main.c
+// Proyecto: Prelab4
+// Hardware: ATMEGA328P
+// Created: 2/14/2024
+// Author : Fatima Urrutia
+//********************************************************************************************************************************************
+
+//********************************************************************************************************************************************
+// Librerias
+//********************************************************************************************************************************************
+
+#define F_CPU 16000000
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <util/delay.h>
+
+//********************************************************************************************************************************************
+// Variables Globales
+//********************************************************************************************************************************************
+ uint8_t contador = 0;
+ uint8_t decenas = 0;
+ uint8_t unidades = 0;
+ 
+ const uint8_t tabla[] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F, 0x77, 0x7C, 0x39, 0x5E, 0x79, 0x71};
+
+//********************************************************************************************************************************************
+// Declaracion de Funciones
+//********************************************************************************************************************************************
+
+void setup(void);
+void intc(void); //Setear la interrupcion del pinchange en c
+void incrementar(void);
+void decrementar(void);
+void setadc(void); //Setear el ADC
+
+//********************************************************************************************************************************************
+// MAIN
+//********************************************************************************************************************************************
+
+int main(void)
+{
+    setup(); //Ir al setup
+    while (1) 
+    {
+		ADCSRA |= (1 << ADSC); //Encender la conversion
+		
+		PORTB &= ~(1 << PORTB5); 
+		PORTB |= (1 << PORTB4);
+		PORTD = tabla[unidades]; //Sacar el valor al display segun la lista en unidades
+		_delay_ms(10) ;
+		PORTB &= ~(1 << PORTB4);
+		PORTB |= (1 << PORTB5);
+		PORTD = tabla[decenas]; //Sacar el valor al display segun la lista en decenas
+		_delay_ms(10);
+		
+		PORTC = ((contador & 0xF0) >> 4) | (PORTC & 0xF0); //Sacar el nibble superior del contador por el puerto c
+		PORTB = (PORTB & 0xF0) | (contador & 0x0F);  //Sacar el nibble inferior del contador por el puerto b
+    }
+}
+
+//********************************************************************************************************************************************
+// SETUP
+//********************************************************************************************************************************************
+
+void setup(void){
+	DDRC &= ~((1 << DDC4) | (1 << DDC5)); //Setear los pines de los botones como entradas
+	PORTC |= (1 << PORTC5) | (1 << PORTC4);  //Activar pullups
+	
+	DDRB |= (1 << DDB0) | (1 << DDB1) | (1 << DDB2) | (1 << DDB3); //Setear las salidas en puerto b
+	
+	DDRC |= (1 << DDC0) | (1 << DDC1) | (1 << DDC2) | (1 << DDC3);  //Setear las salidas en puerto c
+	
+	DDRD = 0xFF;  //Setear las salidas en puerto d
+	
+	setadc(); 
+	intc();
+	sei(); //Activar interrupciones globales
+}
+
+//********************************************************************************************************************************************
+// INTERRUPCIONES
+//********************************************************************************************************************************************
+
+ISR(PCINT1_vect){
+	uint8_t bttnI = PINC & (1 << PINC4); //Variable del boton de incremento
+	uint8_t bttnD = PINC & (1 << PINC5);  //Variable del boton de decremento
+	
+	if (bttnI == 0){
+		incrementar();
+	}
+	else if (bttnD == 0){
+		decrementar();
+	}  //Verificar cual boton se presiono para incrementar o decrementar
+	
+	PCIFR |= (1 << PCIF1); //Apagar la bandera del pinchange
+}
+
+ISR(ADC_vect){
+	unidades = ADCH & 0x0F; //Setear el nibble inferior para las unidades
+	decenas = (ADCH & 0xF0) >> 4; //Setear el nibble superior para las decenas
+	
+	ADCSRA |= (1 << ADIF); //Apagar la bandera de ADC
+}
+
+//********************************************************************************************************************************************
+// SUBFUNCIONES
+//********************************************************************************************************************************************
+
+void intc(void){
+	PCICR |= (1<<PCIE1); //Encender el registro de control de portc
+	PCMSK1 |= (1 << PCINT12) | (1 << PCINT13); //Encender la mascara de PC4 y PC5
+}
+
+void setadc(void){
+	ADMUX |= (1 << REFS0); //Para el valor de referencia del voltaje en 5V
+	ADMUX |= (1 << ADLAR); //Justificacion a la izquierda
+	ADMUX |= (1 << MUX1) | (1 << MUX2); //Configuracion para el uso de ADC6
+	
+	ADCSRA |= (1 << ADEN); //Enciende el ADC
+	ADCSRA |= (1 << ADIE); //Activar la interrupcion del ADC
+	ADCSRA |= (1 << ADPS0) | (1 << ADPS1) | (1 << ADPS2); //Prescaler con division de 128
+}
+
+void incrementar(void){
+	contador++; //Incrementa el contador
+}
+
+void decrementar(void){
+	contador--; //Decrementa el contador
+}
